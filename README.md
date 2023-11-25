@@ -1,5 +1,5 @@
-# Y3-RL-Group-Assignment
+# Group Assignment
 
-## This branch
+## This Branch
 Contains demonstrations of the following environments:
-1. CartPole-v1
+1. [CartPole-v1](cartpole_env.ipynb)
