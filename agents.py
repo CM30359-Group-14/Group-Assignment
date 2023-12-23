@@ -66,7 +66,7 @@ class DQNAgent:
         # Mode: train/test.
         self.is_test = False
 
-    def predict(self, state: np.ndarray, determinstic: bool = False) -> np.ndarray:
+    def predict(self, state: np.ndarray, determinstic: bool = True) -> np.ndarray:
         """
         Selects an action from the input state using a (potentially) epsilon-greedy policy.
         """
@@ -187,7 +187,7 @@ class DQNAgent:
         score = 0
         
         while not done:
-            action = self.select_action(state)
+            action = self.predict(state)
             next_state, reward, done = self.step(action)
             next_state = next_state.flatten()
 
