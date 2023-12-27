@@ -1,12 +1,10 @@
-import os
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import highway_env
+from torch._tensor import Tensor
 
 from typing import Dict, List, Tuple
 from IPython.display import clear_output
@@ -250,3 +248,39 @@ class DQNAgent:
         plt.title('epsilons')
         plt.plot(epsilons)
         plt.show()
+
+
+class DDQNAgent(DQNAgent):
+    """
+    Class representing a Double DQN agent.
+    """
+
+    def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> Tensor:
+        """
+        Computes and returns the Double DQN loss.
+        """
+        device = self.device
+
+        state = torch.FloatTensor(samples["obs"]).to(device)
+        next_state = torch.FloatTensor(samples["next_obs"]).to(device)
+        action = torch.LongTensor(samples["acts"].reshape(-1, 1)).to(device)
+        reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
+        done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
+
+        # G_t = r + gamma * v(s_{t+1}) if state != terminal
+        #     = r                      otherwise
+        curr_q_value = self.dqn(state).gather(1, action)
+
+        # This line is what makes the agent a Double DQN agent.
+        next_q_value = self.dqn_target(next_state).gather( 
+            1, self.dqn(next_state).argmax(dim=1, keepdim=True)
+        ).detach()
+        
+        mask = 1 - done
+        # Calculate the TD target
+        target = (reward + self.gamma * next_q_value * mask).to(device)
+
+        # Calculate DQN loss
+        loss = F.smooth_l1_loss(curr_q_value, target)
+
+        return loss
