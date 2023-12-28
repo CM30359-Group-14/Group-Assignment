@@ -1,15 +1,16 @@
 import numpy as np
 
-from typing import Dict
+from typing import Dict, Tuple
 
 
 class ReplayBuffer:
     """
-    Class representing a simple replay buffer.
+    Class representing a simple replay buffer that accepts stacked images.
     """
-    def __init__(self, obs_dim: int, size: int, batch_size: int = 32):
-        self.obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
-        self.next_obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
+    
+    def __init__(self, obs_shape: Tuple, size: int, batch_size: int = 32):
+        self.obs_buf = np.zeros([size, *obs_shape], dtype=np.float32)
+        self.next_obs_buf = np.zeros([size, *obs_shape], dtype=np.float32)
 
         self.acts_buf = np.zeros([size], dtype=np.float32)
         self.rews_buf = np.zeros([size], dtype=np.float32)

@@ -1,3 +1,4 @@
+import time
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,17 +10,19 @@ from torch._tensor import Tensor
 from typing import Dict, List, Tuple
 from IPython.display import clear_output
 
+from abc import abstractmethod, ABC
+
 from buffers import ReplayBuffer
 from networks import Network
 
 
-class DQNAgent:
+class BaseDQNAgent(ABC):
     """
-    Class representing a DQN agent.
+    Base class for DQN agents.
     """
 
     def __init__(
-        self,
+        self,        
         env: gym.Env,
         memory_size: int,
         batch_size: int,
@@ -30,11 +33,10 @@ class DQNAgent:
         min_epsilon: float = 0.1,
         gamma: float = 0.99,
     ):
-        obs_dim = np.prod(env.observation_space.shape)
-        action_dim = env.action_space.n
+        self.obs_shape = env.observation_space.shape
+        self.action_dim = env.action_space.n
 
         self.env = env
-        self.memory = ReplayBuffer(obs_dim, memory_size, batch_size)
         self.batch_size = batch_size
         self.epsilon = max_epsilon
         self.epsilon_decay = epsilon_decay
@@ -43,49 +45,46 @@ class DQNAgent:
         self.min_epsilon = min_epsilon
         self.target_update = target_update
         self.gamma = gamma
+        self.memory_size = memory_size
 
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
         print(self.device)
 
-        # Networks: DQN behaviour network, DQN target network
-        self.dqn = Network(obs_dim, action_dim).to(self.device)
-        self.dqn_target = Network(obs_dim, action_dim).to(self.device)
-        self.dqn_target.load_state_dict(self.dqn.state_dict())
-        self.dqn_target.eval()
+        # DQN Networks (to be instantiated)
+        self.dqn = None
+        self.dqn_target = None
+        self.optimiser = None
 
-        # Optimiser
-        self.optimiser = optim.Adam(self.dqn.parameters())
-
-        # Transition to store in memory
+        # Experience Replay Buffer.
+        self.memory = ReplayBuffer(self.obs_shape, memory_size, batch_size)
+        # The next transition to store in memory.
         self.transition = list()
 
         # Mode: train/test.
         self.is_test = False
+
+        self._init_seed(seed)
+
+    def set_mode(self, is_test: bool):
+        """
+        Sets the inference mode for the agent.
+        """
+        self.is_test = is_test
 
     def predict(self, state: np.ndarray, determinstic: bool = True) -> np.ndarray:
         """
         Selects an action from the input state using a (potentially) epsilon-greedy policy.
         """
         return self.select_action(state, determinstic)
-
+    
+    @abstractmethod
     def select_action(self, state: np.ndarray, determinstic: bool = False) -> np.ndarray:
         """
         Selects an action from the input state using an epsilon-greedy policy.
         """
-        if not determinstic and np.random.random() < self.epsilon:
-            selected_action = self.env.action_space.sample()
-        else:
-            selected_action = self.dqn(
-                torch.FloatTensor(state).to(self.device)
-            ).argmax()
-            selected_action = selected_action.detach().cpu().numpy()
-
-        if not self.is_test:
-            self.transition = [state, selected_action]
-
-        return selected_action
+        raise NotImplementedError()
     
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.float64, bool]:
         """
@@ -93,7 +92,6 @@ class DQNAgent:
         """
         next_state, reward, terminated, truncated, _ = self.env.step(action)
         done = terminated or truncated
-        next_state = next_state.flatten()
 
         if not self.is_test:
             self.transition += [reward, next_state, done]
@@ -103,7 +101,7 @@ class DQNAgent:
     
     def update_model(self) -> torch.Tensor:
         """
-        Updates the model by gradient descent.
+        Updates the model parameters by gradient descent.
         """
         samples = self.memory.sample_batch()
 
@@ -120,9 +118,7 @@ class DQNAgent:
         Trains the agent.
         """
         self.is_test = False
-
-        state, _ = self.env.reset(seed=self.seed)
-        state = state.flatten() # Necessary for the highway environment
+        state, _ = self.env.reset()
 
         update_count = 0
         epsilons = []
@@ -130,7 +126,7 @@ class DQNAgent:
         scores = []
         score = 0
 
-        for frame_idx in range(1, num_frames + 1):
+        for frame_idx in range(num_frames):
             action = self.select_action(state)
             next_state, reward, done = self.step(action)
 
@@ -139,8 +135,7 @@ class DQNAgent:
 
             if done:
                 # The episode has ended.
-                state, _ = self.env.reset(seed=self.seed)
-                state = state.flatten()
+                state, _ = self.env.reset()
                 
                 scores.append(score)
                 score = 0
@@ -164,63 +159,49 @@ class DQNAgent:
                 if update_count % self.target_update == 0:
                     self._target_hard_update()
 
-            if frame_idx % plotting_interval == 0:
-                self._plot(frame_idx, scores, losses, epsilons)
+            if (frame_idx + 1) % plotting_interval == 0:
+                self._plot(frame_idx + 1, scores, losses, epsilons)
 
         self.env.close()
 
-    def test(self, video_folder: str) -> None:
-        """
-        Tests the agent.
-        """
-        self.is_test =True
-        
-        naive_env = self.env
-        self.env = gym.wrappers.RecordVideo(self.env, video_folder=video_folder)
+    def test(self, num_episodes: int, render: bool = True, frame_interval: float = 0.2) -> Tuple[List, List]:
+        self.is_test = True
 
-        state, _ = self.env.reset(seed=self.seed)
-        state = state.flatten()
+        episode_lengths = []
+        undiscounted_rewards = []
+        for _ in range(num_episodes):
+            done = truncated = False
 
-        done = False
-        score = 0
-        
-        while not done:
-            action = self.predict(state)
-            next_state, reward, done = self.step(action)
-            next_state = next_state.flatten()
+            episode_reward = 0
+            episode_length = 0
 
-            state = next_state
-            score += reward
+            obs, _ = self.env.reset()
+            while not (done or truncated):
+                action = self.predict(obs, True)
+                obs, reward, done, truncated, _ = self.env.step(action)
 
-        print("score: ", score)
-        self.env.close()
+                episode_reward += reward
+                episode_length += 1
 
-        # Reset
-        self.env = naive_env
+                if not render:
+                    continue
 
+                clear_output(True)
+                plt.imshow(self.env.render())
+                plt.show()
+                time.sleep(frame_interval)
+
+            undiscounted_rewards.append(episode_reward)
+            episode_lengths.append(episode_length)
+
+        return episode_lengths, undiscounted_rewards
+    
+    @abstractmethod
     def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
         """
         Computes and returns the DQN loss.
         """
-        device = self.device
-
-        state = torch.FloatTensor(samples["obs"]).to(device)
-        next_state = torch.FloatTensor(samples["next_obs"]).to(device)
-        action = torch.LongTensor(samples["acts"].reshape(-1, 1)).to(device)
-        reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
-        done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
-
-        # G_t = r + gamma * v(s_{t+1}) if state != terminal
-        #     = r                      otherwise
-        curr_q_value = self.dqn(state).gather(1, action)
-        next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0].detach()
-        mask = 1 - done
-        target = (reward + self.gamma * next_q_value * mask).to(device)
-
-        # Calculate DQN loss
-        loss = F.smooth_l1_loss(curr_q_value, target)
-
-        return loss
+        raise NotImplementedError()
 
     def _target_hard_update(self):
         """
@@ -239,20 +220,120 @@ class DQNAgent:
         clear_output(True)
         plt.figure(figsize=(20, 5))
         plt.subplot(131)
-        plt.title('frame %s. score: %s' % (frame_idx, np.mean(scores[-10:])))
-        plt.plot(scores)
+        plt.title('frame %s. score: %s' % (frame_idx, np.mean(scores[-25:])))
+        # Plot the rolling mean score of the last 25 episodes.
+        plt.plot(self._calculate_rolling_mean(scores, 25))
         plt.subplot(132)
         plt.title('loss')
-        plt.plot(losses)
+        plt.plot(losses[20:])
         plt.subplot(133)
         plt.title('epsilons')
         plt.plot(epsilons)
         plt.show()
 
+    def _calculate_rolling_mean(self, data: List, window_size: int) -> np.ndarray:
+        window = np.ones(window_size) / window_size
+        return np.convolve(data, window, mode='valid')
 
-class DDQNAgent(DQNAgent):
+    def _init_seed(self, seed: int):
+        torch.manual_seed(seed)
+
+        if torch.backends.cudnn.enabled:
+            torch.cuda.manual_seed(seed)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+
+        np.random.seed(seed)
+
+
+class MlpDQNAgent(BaseDQNAgent):
     """
-    Class representing a Double DQN agent.
+    Class representing a DQN agent utilising MLP Feed-Forward Neural Networks.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        memory_size: int,
+        batch_size: int,
+        target_update: int,
+        epsilon_decay: float,
+        seed: int,
+        max_epsilon: float = 1.0,
+        min_epsilon: float = 0.1,
+        gamma: float = 0.99,
+    ):
+        super().__init__(
+            env, 
+            memory_size, 
+            batch_size, 
+            target_update, 
+            epsilon_decay, 
+            seed, 
+            max_epsilon, 
+            min_epsilon, 
+            gamma
+        )
+        # Networks: DQN behaviour network, DQN target network
+        obs_dim = np.prod(self.obs_shape)
+        self.dqn = Network(obs_dim, self.action_dim).to(self.device)
+        self.dqn_target = Network(obs_dim, self.action_dim).to(self.device)
+        self.dqn_target.load_state_dict(self.dqn.state_dict())
+        self.dqn_target.eval()
+
+        # Optimiser
+        self.optimiser = optim.Adam(self.dqn.parameters())
+
+    def select_action(self, state: np.ndarray, determinstic: bool = False) -> np.ndarray:
+        """
+        Selects an action from the input state using an epsilon-greedy policy.
+        """
+        if not determinstic and np.random.random() < self.epsilon:
+            selected_action = self.env.action_space.sample()
+        else:
+            flattened_state = state.flatten()
+            selected_action = self.dqn(
+                torch.FloatTensor(flattened_state).to(self.device)
+            ).argmax()
+            selected_action = selected_action.detach().cpu().numpy()
+
+        if not self.is_test:
+            self.transition = [state, selected_action]
+
+        return selected_action
+
+    def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
+        """
+        Computes and returns the DQN loss.
+        """
+        device = self.device
+
+        # Shape = (batch_size, obs dim 1, obs dim 2, ...)
+        # This flattens the observation dimensions of `state` and `next_state`.
+        state = torch.FloatTensor(samples["obs"].reshape(self.batch_size, -1)).to(device)
+        next_state = torch.FloatTensor(samples["next_obs"].reshape(self.batch_size, -1)).to(device)
+
+        # Reshapes each 1-dimesional array into a 2-dimensional array with one column.
+        action = torch.LongTensor(samples["acts"].reshape(-1, 1)).to(device)
+        reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
+        done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
+
+        # G_t = r + gamma * v(s_{t+1}) if state != terminal
+        #     = r                      otherwise
+        curr_q_value = self.dqn(state).gather(1, action)
+        next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0].detach()
+        mask = 1 - done
+        target = (reward + self.gamma * next_q_value * mask).to(device)
+
+        # Calculate DQN loss
+        loss = F.smooth_l1_loss(curr_q_value, target)
+
+        return loss
+
+
+class MlpDDQNAgent(MlpDQNAgent):
+    """
+    Class representing a Double DQN agent utilising MLP Feed-Forward Neural Networks.
     """
 
     def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> Tensor:
@@ -261,8 +342,12 @@ class DDQNAgent(DQNAgent):
         """
         device = self.device
 
-        state = torch.FloatTensor(samples["obs"]).to(device)
-        next_state = torch.FloatTensor(samples["next_obs"]).to(device)
+        # Shape = (batch_size, obs dim 1, obs dim 2, ...)
+        # This flattens the observation dimensions of `state` and `next_state`.
+        state = torch.FloatTensor(samples["obs"].reshape(self.batch_size, -1)).to(device)
+        next_state = torch.FloatTensor(samples["next_obs"].reshape(self.batch_size, -1)).to(device)
+
+        # Reshapes each 1-dimesional array into a 2-dimensional array with one column.
         action = torch.LongTensor(samples["acts"].reshape(-1, 1)).to(device)
         reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
         done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
