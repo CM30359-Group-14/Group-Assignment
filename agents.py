@@ -27,8 +27,8 @@ class BaseDQNAgent(ABC):
         memory_size: int,
         batch_size: int,
         target_update: int,
-        epsilon_decay: float,
-        seed: int,
+        epsilon_decay: float = 1e-4,
+        seed: int = 42,
         max_epsilon: float = 1.0,
         min_epsilon: float = 0.1,
         gamma: float = 0.99,
@@ -136,7 +136,6 @@ class BaseDQNAgent(ABC):
             if done:
                 # The episode has ended.
                 state, _ = self.env.reset()
-                
                 scores.append(score)
                 score = 0
 
@@ -164,7 +163,7 @@ class BaseDQNAgent(ABC):
 
         self.env.close()
 
-    def test(self, num_episodes: int, render: bool = True, frame_interval: float = 0.2) -> Tuple[List, List]:
+    def test(self, num_episodes: int, render: bool = True, time_interval: float = 0.2) -> Tuple[List, List]:
         self.is_test = True
 
         episode_lengths = []
@@ -189,7 +188,7 @@ class BaseDQNAgent(ABC):
                 clear_output(True)
                 plt.imshow(self.env.render())
                 plt.show()
-                time.sleep(frame_interval)
+                time.sleep(time_interval)
 
             undiscounted_rewards.append(episode_reward)
             episode_lengths.append(episode_length)
@@ -197,7 +196,7 @@ class BaseDQNAgent(ABC):
         return episode_lengths, undiscounted_rewards
     
     @abstractmethod
-    def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
+    def _compute_dqn_loss(self, samples: Dict[str, np.ndarray], gamma: float = None) -> torch.Tensor:
         """
         Computes and returns the DQN loss.
         """
@@ -231,11 +230,13 @@ class BaseDQNAgent(ABC):
         plt.plot(epsilons)
         plt.show()
 
-    def _calculate_rolling_mean(self, data: List, window_size: int) -> np.ndarray:
+    @staticmethod
+    def _calculate_rolling_mean(data: List, window_size: int) -> np.ndarray:
         window = np.ones(window_size) / window_size
         return np.convolve(data, window, mode='valid')
 
-    def _init_seed(self, seed: int):
+    @staticmethod
+    def _init_seed(seed: int):
         torch.manual_seed(seed)
 
         if torch.backends.cudnn.enabled:
@@ -252,13 +253,13 @@ class MlpDQNAgent(BaseDQNAgent):
     """
 
     def __init__(
-        self,
+        self,        
         env: gym.Env,
         memory_size: int,
         batch_size: int,
         target_update: int,
-        epsilon_decay: float,
-        seed: int,
+        epsilon_decay: float = 1e-4,
+        seed: int = 42,
         max_epsilon: float = 1.0,
         min_epsilon: float = 0.1,
         gamma: float = 0.99,
@@ -274,10 +275,11 @@ class MlpDQNAgent(BaseDQNAgent):
             min_epsilon, 
             gamma
         )
+
         # Networks: DQN behaviour network, DQN target network
-        obs_dim = np.prod(self.obs_shape)
-        self.dqn = Network(obs_dim, self.action_dim).to(self.device)
-        self.dqn_target = Network(obs_dim, self.action_dim).to(self.device)
+        self.obs_dim = np.prod(self.obs_shape)
+        self.dqn = Network(self.obs_dim, self.action_dim).to(self.device)
+        self.dqn_target = Network(self.obs_dim, self.action_dim).to(self.device)
         self.dqn_target.load_state_dict(self.dqn.state_dict())
         self.dqn_target.eval()
 
@@ -302,12 +304,14 @@ class MlpDQNAgent(BaseDQNAgent):
 
         return selected_action
 
-    def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
+    def _compute_dqn_loss(self, samples: Dict[str, np.ndarray], gamma: float = None) -> torch.Tensor:
         """
         Computes and returns the DQN loss.
         """
-        device = self.device
+        if gamma is None:
+            gamma = self.gamma
 
+        device = self.device
         # Shape = (batch_size, obs dim 1, obs dim 2, ...)
         # This flattens the observation dimensions of `state` and `next_state`.
         state = torch.FloatTensor(samples["obs"].reshape(self.batch_size, -1)).to(device)
@@ -322,8 +326,9 @@ class MlpDQNAgent(BaseDQNAgent):
         #     = r                      otherwise
         curr_q_value = self.dqn(state).gather(1, action)
         next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0].detach()
+        
         mask = 1 - done
-        target = (reward + self.gamma * next_q_value * mask).to(device)
+        target = (reward + gamma * next_q_value * mask).to(device)
 
         # Calculate DQN loss
         loss = F.smooth_l1_loss(curr_q_value, target)
