@@ -1,4 +1,5 @@
-# Group Assignment
+# Autonomous Control in a Highway Environment with DRL
+You can find the highway environment [here](https://highway-env.farama.org/).
 
 ## This Branch
 Contains implementations of the following algorithms based off of [Deep Q-Networks](https://arxiv.org/pdf/1312.5602.pdf):
