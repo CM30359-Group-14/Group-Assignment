@@ -1,7 +1,10 @@
+import random
 import numpy as np
 
 from collections import deque
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
+
+from trees import SumSegmentTree, MinSegmentTree
 
 
 class ReplayBuffer:
@@ -111,3 +114,105 @@ class NStepReplayBuffer(ReplayBuffer):
             next_obs, done = (n_o, d) if d else (next_obs, done)
 
         return rew, next_obs, done
+    
+
+class PrioritisedReplayBuffer(NStepReplayBuffer):
+    """
+    Class representing a Prioritised Replay Buffer with N-step returns.
+    """
+
+    def __init__(
+            self, 
+            obs_shape: Tuple, 
+            size: int, 
+            batch_size: int = 32, 
+            alpha: float = 0.6,
+            n_step: int = 1,
+            gamma: float = 0.99,
+        ):
+        """
+        Instantiates a PrioritisedReplayBuffer.
+        """
+        super().__init__(obs_shape, size, batch_size, n_step, gamma)
+        self.alpha = alpha
+
+        self.max_priority = 1
+        self.tree_ptr = 0
+
+        # The capacity must be positive and a power of 2.
+        tree_capcity = 1
+        while tree_capcity < self.max_size:
+            tree_capcity *= 2
+
+        self.sum_tree = SumSegmentTree(tree_capcity)
+        self.min_tree = MinSegmentTree(tree_capcity)
+
+    def store(self, obs: np.ndarray, act: np.ndarray, rew: np.ndarray, next_obs: np.ndarray, done: bool):
+        """
+        Stores the experience and its associated priority.
+        """
+        transition = super().store(obs, act, rew, next_obs, done)
+
+        if transition:
+            self.sum_tree[self.tree_ptr] = self.max_priority ** self.alpha
+            self.min_tree[self.tree_ptr] = self.max_priority ** self.alpha
+            self.tree_ptr = (self.tree_ptr + 1) % self.max_size
+
+        return transition
+
+    def sample_batch(self, beta: float = 0.4) -> Dict[str, np.ndarray]:
+        """
+        Samples a batch of experiences with prioritised replay.
+        """
+        indices = self._sample_proportional()
+        weights = np.array([self._calculate_weight(idx, beta) for idx in indices])
+
+        return dict(
+            obs=self.obs_buf[indices],
+            next_obs=self.next_obs_buf[indices],
+            acts=self.acts_buf[indices],
+            rews=self.rews_buf[indices],
+            done=self.done_buf[indices],
+            weights=weights,
+            indices=indices,
+        )
+    
+    def update_priorities(self, indices: List[int], priorities: np.ndarray):
+        """
+        Updates the priorities of sample transitions.
+        """
+        for idx, priority in zip(indices, priorities):
+            self.sum_tree[idx] = priority ** self.alpha
+            self.min_tree[idx] = priority ** self.alpha
+
+            self.max_priority = max(self.max_priority, priority)
+
+    def _sample_proportional(self) -> List[int]:
+        """
+        Samples indices based on proportions.
+        """
+        indices = []
+        p_total = self.sum_tree.sum(0, self.size - 1)
+        segment = p_total / self.batch_size
+
+        for i in range(self.batch_size):
+            a = segment * i
+            b = segment * (i + 1)
+            upperbound = random.uniform(a, b)
+            idx = self.sum_tree.retrieve(upperbound)
+            indices.append(idx)
+
+        return indices
+    
+    def _calculate_weight(self, idx: int, beta: float) -> float:
+        """
+        Calculates the weight of the experience at `idx`.
+        """
+        p_min = self.min_tree.min() / self.sum_tree.sum()
+        max_weight = (p_min * self.size) ** (-beta)
+
+        p_sample = self.sum_tree[idx] / self.sum_tree.sum()
+        weight = (p_sample * self.size) ** (-beta)
+        weight = weight / max_weight
+        
+        return weight

@@ -1,3 +1,4 @@
+import os
 import time
 import gymnasium as gym
 import matplotlib.pyplot as plt
@@ -7,7 +8,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch._tensor import Tensor
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Self
 from IPython.display import clear_output
 
 from abc import abstractmethod, ABC
@@ -16,9 +17,55 @@ from buffers import ReplayBuffer
 from networks import Network
 
 
-class BaseDQNAgent(ABC):
+class BaseAgent(ABC):
     """
-    Base class for DQN agents.
+    Abstract Base Class for RL agents.
+    """
+
+    def set_mode(self, is_test: bool):
+        """
+        Sets the inference mode for the agent.
+        """
+        self.is_test = is_test
+
+    def predict(self, state: np.ndarray, determinstic: bool = True) -> np.ndarray:
+        """
+        Selects an action from the input state using a (potentially) epsilon-greedy policy.
+        """
+        return self.select_action(state, determinstic)
+    
+    @abstractmethod
+    def select_action(self, state: np.ndarray, determinstic: bool = False) -> np.ndarray:
+        """
+        Selects an action from the input state using an epsilon-greedy policy.
+        """
+        raise NotImplementedError()
+    
+    @abstractmethod
+    def train(self, num_frames: int, plotting_interval: int = 200):
+        """
+        Trains the agent for a specified number of frames.
+        """
+        raise NotImplementedError()
+    
+    @staticmethod
+    def _init_seed(seed: int):
+        """
+        Initialises the seed used by random number generators.
+        """
+        torch.manual_seed(seed)
+
+        if torch.backends.cudnn.enabled:
+            torch.cuda.manual_seed(seed)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+
+        np.random.seed(seed)
+
+
+class BaseDQNAgent(BaseAgent):
+    """
+    Abstract Base class for DQN agents.
     """
 
     def __init__(
@@ -66,25 +113,6 @@ class BaseDQNAgent(ABC):
         self.is_test = False
 
         self._init_seed(seed)
-
-    def set_mode(self, is_test: bool):
-        """
-        Sets the inference mode for the agent.
-        """
-        self.is_test = is_test
-
-    def predict(self, state: np.ndarray, determinstic: bool = True) -> np.ndarray:
-        """
-        Selects an action from the input state using a (potentially) epsilon-greedy policy.
-        """
-        return self.select_action(state, determinstic)
-    
-    @abstractmethod
-    def select_action(self, state: np.ndarray, determinstic: bool = False) -> np.ndarray:
-        """
-        Selects an action from the input state using an epsilon-greedy policy.
-        """
-        raise NotImplementedError()
     
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.float64, bool]:
         """
@@ -114,9 +142,6 @@ class BaseDQNAgent(ABC):
         return loss.item()
     
     def train(self, num_frames: int, plotting_interval: int = 200):
-        """
-        Trains the agent.
-        """
         self.is_test = False
         state, _ = self.env.reset()
 
@@ -195,6 +220,35 @@ class BaseDQNAgent(ABC):
 
         return episode_lengths, undiscounted_rewards
     
+    def save(self, model_path: str):
+        """
+        Saves the Deep Q-Network model parameters to disk at `model_path`.
+        """
+        if not os.path.exists("./model/"):
+            os.mkdir("model")
+
+        torch.save(self.dqn.state_dict(), model_path)
+
+    @classmethod
+    def load(
+        cls, 
+        model_path: str,
+        env: gym.Env,
+        memory_size: int,
+        batch_size: int,
+        target_update: int,
+        **kwargs
+    ) -> Self:
+        agent = cls(env, memory_size, batch_size, target_update, **kwargs)
+
+        agent.dqn.load_state_dict(torch.load(model_path))
+        agent.dqn_target.load_state_dict(torch.load(model_path))
+        
+        # agent.dqn.eval()
+        agent.dqn_target.eval()
+
+        return agent
+    
     @abstractmethod
     def _compute_dqn_loss(self, samples: Dict[str, np.ndarray], gamma: float = None) -> torch.Tensor:
         """
@@ -234,17 +288,6 @@ class BaseDQNAgent(ABC):
     def _calculate_rolling_mean(data: List, window_size: int) -> np.ndarray:
         window = np.ones(window_size) / window_size
         return np.convolve(data, window, mode='valid')
-
-    @staticmethod
-    def _init_seed(seed: int):
-        torch.manual_seed(seed)
-
-        if torch.backends.cudnn.enabled:
-            torch.cuda.manual_seed(seed)
-            torch.backends.cudnn.benchmark = False
-            torch.backends.cudnn.deterministic = True
-
-        np.random.seed(seed)
 
 
 class MlpDQNAgent(BaseDQNAgent):
