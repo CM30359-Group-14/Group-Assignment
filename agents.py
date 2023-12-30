@@ -22,6 +22,12 @@ class BaseAgent(ABC):
     Abstract Base Class for RL agents.
     """
 
+    def __init__(self, env: gym.Env):
+        self.env = env
+
+        # Mode: train/test.
+        self.is_test = False
+
     def set_mode(self, is_test: bool):
         """
         Sets the inference mode for the agent.
@@ -45,6 +51,21 @@ class BaseAgent(ABC):
     def train(self, num_frames: int, plotting_interval: int = 200):
         """
         Trains the agent for a specified number of frames.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def save(self, model_path: str):
+        """
+        Saves the model's parameters to disk at `model_path`.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    @classmethod
+    def load(cls: Self, model_path: str, **kwargs) -> Self:
+        """
+        Loads a saved Agent from disk.
         """
         raise NotImplementedError()
     
@@ -80,10 +101,8 @@ class BaseDQNAgent(BaseAgent):
         min_epsilon: float = 0.1,
         gamma: float = 0.99,
     ):
-        self.obs_shape = env.observation_space.shape
-        self.action_dim = env.action_space.n
+        super().__init__(env)
 
-        self.env = env
         self.batch_size = batch_size
         self.epsilon = max_epsilon
         self.epsilon_decay = epsilon_decay
@@ -93,6 +112,9 @@ class BaseDQNAgent(BaseAgent):
         self.target_update = target_update
         self.gamma = gamma
         self.memory_size = memory_size
+
+        self.obs_shape = env.observation_space.shape
+        self.action_dim = env.action_space.n
 
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
@@ -108,9 +130,6 @@ class BaseDQNAgent(BaseAgent):
         self.memory = ReplayBuffer(self.obs_shape, memory_size, batch_size)
         # The next transition to store in memory.
         self.transition = list()
-
-        # Mode: train/test.
-        self.is_test = False
 
         self._init_seed(seed)
     
