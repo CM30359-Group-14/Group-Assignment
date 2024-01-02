@@ -48,9 +48,11 @@ class BaseAgent(ABC):
         raise NotImplementedError()
     
     @abstractmethod
-    def train(self, num_frames: int, plotting_interval: int = 200):
+    def train(self, num_frames: int, plotting_interval: int = 200) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Trains the agent for a specified number of frames.
+
+        :return: a tuple of training metrics (scores, losses, epsilons)
         """
         raise NotImplementedError()
 
@@ -61,8 +63,8 @@ class BaseAgent(ABC):
         """
         raise NotImplementedError()
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def load(cls: Self, model_path: str, **kwargs) -> Self:
         """
         Loads a saved Agent from disk.
@@ -206,6 +208,8 @@ class BaseDQNAgent(BaseAgent):
                 self._plot(frame_idx + 1, scores, losses, epsilons)
 
         self.env.close()
+
+        return (scores, losses, epsilons)
 
     def test(self, num_episodes: int, render: bool = True, time_interval: float = 0.2) -> Tuple[List, List]:
         self.is_test = True
