@@ -74,7 +74,7 @@ class NoisyLinear(nn.Module):
     @staticmethod
     def scale_noise(size: int) -> torch.Tensor:
         """
-        Sets the scale to make noise acrosss. Specifically, Factorised Gaussian Noise.
+        Sets the scale to make noise across. Specifically, Factorised Gaussian Noise.
         """
         x = torch.randn(size)
 
