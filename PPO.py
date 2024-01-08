@@ -17,7 +17,8 @@ based partially on Eric Yang Yu's Medium guide to implementing PPO found here ht
 
 
 class PPO():
-    def __init__(self, env, lr=0.2, clip=0.3,batch_size=32, gamma=0.95, verbose=False, plot_frequency=10, render_frequency=1, updates_per_iteration=10):
+    
+    def __init__(self, env, lr=0.2, clip=0.3,batch_size=32, gamma=0.95, verbose=False, plot_frequency=10, render_frequency=1):
         
         self._init_hyperparameters(lr=lr, batch_size=batch_size, gamma=gamma, clip=clip)
         
@@ -26,14 +27,6 @@ class PPO():
         self.render_frequency=render_frequency
         self.save_file = "scores2.csv"
         
-        # Default values for hyperparameters, will need to change later.
-        self.batch_size = batch_size
-        self.lr = lr
-        self.clip = clip # As recommended by the paper
-        self.gamma = gamma  # could reduce to 0.8
-        self.updates_per_iteration = updates_per_iteration
-        
-        #for counting number of frames
         self.steps = 0
         
       # Extract environment information
@@ -41,21 +34,29 @@ class PPO():
         self.act_dims = env.action_space.n
         self.obs_dims = np.prod(env.observation_space.shape)
         
-        #enables use of GPU
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
-        #initialises actor and critic networks
         self.actor = Network(self.obs_dims, self.act_dims).to(self.device)
         self.critic = Network(self.obs_dims, 1).to(self.device)
         
-        #initialises optimisers for both networks
         self.actor_optim = Adam(self.actor.parameters(), lr=self.lr)
         self.critic_optim = Adam(self.critic.parameters(), lr=self.lr)
         
-        # Creates the covariance matrix
+        # Create our variable for the matrix.
+        # Note that I chose 0.5 for stdev arbitrarily.
         self.cov_var = torch.full(size=(self.act_dims,), fill_value=0.5)
-        self.cov_mat = torch.diag(self.cov_var)         
+        
+        # Create the covariance matrix
+        self.cov_mat = torch.diag(self.cov_var)
+        
+    def _init_hyperparameters(self, lr=0.0001, clip=0.35, gamma=0.95, updates_per_iteration=10, batch_size=32):
+         # Default values for hyperparameters, will need to change later.
+        self.batch_size = batch_size
+        self.lr = lr
+        self.clip = clip # As recommended by the paper
+        self.gamma = gamma  # could reduce to 0.8
+        self.updates_per_iteration = updates_per_iteration      
         
     
     def get_action(self, obs):
