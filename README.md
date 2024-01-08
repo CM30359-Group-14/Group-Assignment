@@ -31,7 +31,7 @@ Activate your virtual environment (Unix):
 source venv/bin/activate
 ```
 
-Or, activate your virutal environment (Windows):
+Or, activate your virtual environment (Windows):
 
 ```bash
 .\venv\bin\activate

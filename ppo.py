@@ -57,8 +57,15 @@ class PPO:
         
         # Creates the covariance matrix
         self.cov_var = torch.full(size=(self.act_dims,), fill_value=0.5)
-        self.cov_mat = torch.diag(self.cov_var)         
-        
+        self.cov_mat = torch.diag(self.cov_var)
+
+    def _init_hyperparameters(self, lr=0.0001, clip=0.35, gamma=0.95, updates_per_iteration=10, batch_size=32):
+         # Default values for hyperparameters, will need to change later.
+        self.batch_size = batch_size
+        self.lr = lr
+        self.clip = clip # As recommended by the paper
+        self.gamma = gamma  # could reduce to 0.8
+        self.updates_per_iteration = updates_per_iteration         
     
     def get_action(self, obs):
         """
