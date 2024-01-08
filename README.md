@@ -11,3 +11,5 @@ Contains implementations of the following algorithms based off of [Deep Q-Networ
 - [Categorical DQN](categorical_dqn/categorical_dqn.ipynb)
 - [DQN with N-step Learning](n_step_dqn/n_step_dqn.ipynb)
 - [Rainbow DQN](rainbow_dqn/rainbow_dqn.ipynb)
+
+We used [this](https://github.com/Curt-Park/rainbow-is-all-you-need) tutorial to help us implement the above algorithms.
