@@ -13,3 +13,32 @@ Contains implementations of the following algorithms based off of [Deep Q-Networ
 - [Rainbow DQN](rainbow_dqn/rainbow_dqn.ipynb)
 
 We used [this](https://github.com/Curt-Park/rainbow-is-all-you-need) tutorial to help us implement the above algorithms.
+
+## To run this code
+
+Create a virtual environment:
+
+```bash
+python3 -m venv venv
+```
+
+Activate your virtual environment (Unix):
+
+```bash
+source venv/bin/activate
+```
+
+Or, activate your virutal environment (Windows):
+
+```bash
+.\venv\bin\activate
+```
+
+
+Install the required packages:
+
+```bash
+pip install -r requirements.txt
+```
+
+And you should be set to run each of the notebooks! (as long as you've been blessed by the Cuda gods)
