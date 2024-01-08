@@ -11,12 +11,14 @@ from IPython.display import clear_output
 import time
 import csv
 
-"""
-based partially on Eric Yang Yu's Medium guide to implementing PPO found here https://medium.com/analytics-vidhya/coding-ppo-from-scratch-with-pytorch-part-1-4-613dfc1b14c8
-"""
 
+class PPO:
+    """
+    Class representing a Proximal Policy Optimisation Agent.
 
-class PPO():
+    Based partially on Eric Yang Yu's Medium guide to implementing PPO found here:
+    -> https://medium.com/analytics-vidhya/coding-ppo-from-scratch-with-pytorch-part-1-4-613dfc1b14c8
+    """
     def __init__(self, env, lr=0.2, clip=0.3,batch_size=32, gamma=0.95, verbose=False, plot_frequency=10, render_frequency=1, updates_per_iteration=10):
         
         self._init_hyperparameters(lr=lr, batch_size=batch_size, gamma=gamma, clip=clip)
@@ -33,10 +35,10 @@ class PPO():
         self.gamma = gamma  # could reduce to 0.8
         self.updates_per_iteration = updates_per_iteration
         
-        #for counting number of frames
+        # For counting number of frames
         self.steps = 0
         
-      # Extract environment information
+        # Extract environment information
         self.env = env
         self.act_dims = env.action_space.n
         self.obs_dims = np.prod(env.observation_space.shape)
@@ -195,8 +197,6 @@ class PPO():
         # Return predicted values V and log probs log_probs
         return V, log_probs
     
-    
-    
     def _plot(self, frame_idx: int, scores: List[float], actor_losses: List[float], critic_losses: List[float]):
         """Plots the training progress."""
         clear_output(True)
@@ -217,8 +217,7 @@ class PPO():
         while time.time() < timeout:
             plt.pause(1)
 
-        plt.close()
-        
+        plt.close() 
     
     def collect_batch(self):
         """
@@ -365,35 +364,35 @@ class PPO():
         return average/test_num
 
 
-#imports the environment
-import gymnasium as gym
+if __name__ == "__main__":
+    #imports the environment
+    import gymnasium as gym
 
-#build env with appropriate config
-env = gym.make("highway-fast-v0", render_mode="rgb_array")
-env.configure({
-    'duration': 50,
-    'lanes_count': 4
-    
-})
+    #build env with appropriate config
+    env = gym.make("highway-fast-v0", render_mode="rgb_array")
+    env.configure({
+        'duration': 50,
+        'lanes_count': 4
+        
+    })
 
-seed = 777
-def seed_torch(seed: int):
-    torch.manual_seed(seed)
+    seed = 777
+    def seed_torch(seed: int):
+        torch.manual_seed(seed)
 
-    if torch.backends.cudnn.enabled:
-        torch.cuda.manual_seed(seed)
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
+        if torch.backends.cudnn.enabled:
+            torch.cuda.manual_seed(seed)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
 
-np.random.seed(seed)
-seed_torch(seed)
+    np.random.seed(seed)
+    seed_torch(seed)
 
-num_frames = 250_000
-gamma = 0.85
-batch_size = 64
+    num_frames = 250_000
+    gamma = 0.85
+    batch_size = 64
 
-#initialise, train and test agent.
-agent = PPO(env, lr=0.005, batch_size=batch_size, gamma=gamma, clip=0.14)
-agent.train(num_frames)
-print("reward = "+str(agent.test(1000)))
-
+    #initialise, train and test agent.
+    agent = PPO(env, lr=0.005, batch_size=batch_size, gamma=gamma, clip=0.14)
+    agent.train(num_frames)
+    print("reward = "+str(agent.test(1000)))

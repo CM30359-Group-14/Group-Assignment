@@ -1,9 +1,9 @@
 # Autonomous Control in a Highway Environment with DRL
 You can find the highway environment [here](https://highway-env.farama.org/).
 
-## This Branch
-Contains implementations of the following algorithms based off of [Deep Q-Networks](https://arxiv.org/pdf/1312.5602.pdf):
-- [DQN](base_dqn/dqn.ipynb)
+## Rainbow DQN
+We implemented following algorithms based off of [Deep Q-Networks](https://arxiv.org/pdf/1312.5602.pdf):
+- [DQN](base_dqn/dqn.ipynb) - See also [here](giv_dqn/DQN_CNN.ipynb) and [here](shikha_dqn/DQN%20Highway%20Environment%20-%202.ipynb)
 - [Double DQN](double_dqn/double_dqn.ipynb)
 - [DQN with Prioritised Experience Replay](per_dqn/prioritised_experience_replay.ipynb)
 - [Dueling DQN](dueling_dqn/dueling_networks.ipynb)
@@ -13,6 +13,9 @@ Contains implementations of the following algorithms based off of [Deep Q-Networ
 - [Rainbow DQN](rainbow_dqn/rainbow_dqn.ipynb)
 
 We used [this](https://github.com/Curt-Park/rainbow-is-all-you-need) tutorial to help us implement the above algorithms.
+
+## PPO
+You can find our implementation of PPO [here](ppo.py). We partially based it paritially on Eric Yang Yu's Medium [Guide to implementing PPO](https://medium.com/analytics-vidhya/coding-ppo-from-scratch-with-pytorch-part-1-4-613dfc1b14c8)
 
 ## To run this code
 
